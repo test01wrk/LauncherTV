@@ -30,6 +30,8 @@ import org.cosinus.launchertv.R;
 import org.cosinus.launchertv.Utils;
 import org.cosinus.launchertv.views.ApplicationAdapter;
 
+import java.lang.ref.WeakReference;
+
 
 public class ApplicationList extends Activity implements AdapterView.OnItemClickListener, View.OnClickListener {
 	public static final String PACKAGE_NAME = "package_name";
@@ -44,21 +46,39 @@ public class ApplicationList extends Activity implements AdapterView.OnItemClick
 	private int mApplication = -1;
 	private int mViewType = 0;
 	private AbsListView mListView;
-	private final AsyncTask<Void, Void, AppInfo[]> mApplicationLoader = new AsyncTask<Void, Void, AppInfo[]>() {
+
+	private static class LoadAppListTask extends AsyncTask<Void, Void, AppInfo[]> {
+		private final WeakReference<ApplicationList> activityRef;
+
+		private LoadAppListTask(ApplicationList activity) {
+			this.activityRef = new WeakReference<>(activity);
+		}
+
+		public static void load(ApplicationList activity) {
+			new LoadAppListTask(activity).executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+		}
+
 		@Override
 		protected AppInfo[] doInBackground(Void... params) {
-			return Utils.loadApplications(ApplicationList.this).toArray(new AppInfo[0]);
+			ApplicationList activity = activityRef.get();
+			if (activity == null) {
+				return null;
+			}
+			return Utils.loadApplications(activity).toArray(new AppInfo[0]);
 		}
 
 		@Override
 		protected void onPostExecute(AppInfo[] apps) {
-			getListView().setOnItemClickListener(ApplicationList.this);
-			getListView().setAdapter(
-					new ApplicationAdapter(ApplicationList.this,
-							mViewType == VIEW_LIST ? R.layout.list_item : R.layout.grid_item,
-							apps));
+			ApplicationList activity = activityRef.get();
+			if (activity != null && apps != null) {
+				activity.getListView().setOnItemClickListener(activity);
+				activity.getListView().setAdapter(
+						new ApplicationAdapter(activity,
+								activity.mViewType == VIEW_LIST ? R.layout.list_item : R.layout.grid_item,
+								apps));
+			}
 		}
-	};
+	}
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -79,7 +99,7 @@ public class ApplicationList extends Activity implements AdapterView.OnItemClick
 				R.layout.gridview);
 
 		mListView = (AbsListView) findViewById(R.id.list);
-		mApplicationLoader.execute();
+		LoadAppListTask.load(this);
 
 		View v;
 		if ((args != null) && (args.containsKey(SHOW_DELETE))) {
